@@ -1,10 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"flag"
 	"fmt"
+	"image"
+	"image/gif"
+	"image/jpeg"
+	"image/png"
 	"io/ioutil"
 	"mime"
 	"net/http"
@@ -111,6 +116,47 @@ func uploadFileHandler() http.HandlerFunc {
 			return
 		}
 
+		var imgSrc image.Image
+		if filetype == "image/png" {
+			imgSrc, _ = png.Decode(bytes.NewReader(fileBytes))
+		} else if filetype == "image/gif" {
+			imgSrc, _ = gif.Decode(bytes.NewReader(fileBytes))
+		} else {
+			imgSrc, _ = jpeg.Decode(bytes.NewReader(fileBytes))
+		}
+
+		g := gift.New(
+			gift.Resize(0, 800, gift.LanczosResampling),
+			gift.UnsharpMask(1, 1, 0),
+		)
+		newImage := image.NewRGBA(g.Bounds(imgSrc.Bounds()))
+		g.DrawAt(newImage, imgSrc, newImage.Bounds().Min, gift.OverOperator)
+
+		// img := image.NewGray(image.Rect(0, 0, 100, 100))
+		// img.Pix = fileBytes
+
+		// img := &image.Gray{Pix: fileBytes, Stride: 0, Rect: image.Rect(0, 0, 0, 0)}
+
+		// img := image.NewGray(image.Rect(0, 0, 100, 100))
+		// copy(img.Pix, fileBytes)
+		// img, _, _ := image.Decode(bytes.NewReader(fileBytes))
+		// img, _ := jpeg.Decode(bytes.NewReader(fileBytes))
+
+		// g := gift.New(
+		// 	gift.Resize(0, 0, gift.LanczosResampling),
+		// 	gift.UnsharpMask(1, 1, 0),
+		// )
+		// dst := image.NewRGBA(img.Bounds())
+		// g.DrawAt(dst, img, dst.Bounds().Min, gift.CopyOperator)
+
+		// buf := new(bytes.Buffer)
+		// err1 := jpeg.Encode(buf, dst, nil)
+		// if err1 != nil {
+		// 	renderError(w, "CANT CONVERT IMAGE", http.StatusInternalServerError)
+		// 	return
+		// }
+		// newFileBytes := buf.Bytes()
+
 		fileName := randToken(12)
 		fileEndings, err := mime.ExtensionsByType(filetype)
 		if err != nil {
@@ -129,7 +175,10 @@ func uploadFileHandler() http.HandlerFunc {
 		}
 
 		defer newFile.Close()
-		if _, err := newFile.Write(fileBytes); err != nil {
+
+		var opt jpeg.Options
+		opt.Quality = 80
+		if err := jpeg.Encode(newFile, newImage, &opt); err != nil {
 			renderError(w, "CANT WRITE FILE", http.StatusInternalServerError)
 			return
 		}
