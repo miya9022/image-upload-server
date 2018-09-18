@@ -3,10 +3,15 @@ package uploadserver
 import (
 	"fmt"
 	"io/ioutil"
-	"path/filepath"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/pierrre/imageserver"
 	imageserver_source "github.com/pierrre/imageserver/source"
 )
@@ -16,16 +21,48 @@ var (
 	Dir = initDir()
 
 	// Images contains all images by filename.
-	Images = make(map[string]*imageserver.Image)
+	Images        = make(map[string]*imageserver.Image)
 	MapTypeFormat = initMapTypeFormat()
 
 	// Server is an Image Server that uses filename as source.
 	Server = imageserver.Server(imageserver.ServerFunc(func(params imageserver.Params) (*imageserver.Image, error) {
+		sess, err := session.NewSession(&aws.Config{Region: aws.String("us-east-1")})
+		if err != nil {
+			fmt.Println("Error creating session ", err)
+			return nil, err
+		}
+
+		cre, err := sess.Config.Credentials.Get()
+		if err != nil {
+			fmt.Println("Error getting cred ", err)
+			return nil, err
+		}
+		fmt.Println("Access key id: ", cre.AccessKeyID)
 		source, err := params.GetString(imageserver_source.Param)
 		if err != nil {
 			return nil, err
 		}
-		im, err := Get(source)
+
+		file, err := os.Create(Dir + source)
+		if err != nil {
+			fmt.Println("Unable to open file ", err)
+			return nil, err
+		}
+
+		defer file.Close()
+
+		s3dl := s3manager.NewDownloader(sess)
+		_, err = s3dl.Download(file, &s3.GetObjectInput{
+			Bucket: aws.String("tripzozo-bucket"),
+			Key:    aws.String(source),
+		})
+
+		// im, err := Get(source)
+		if err != nil {
+			return nil, &imageserver.ParamError{Param: imageserver_source.Param, Message: err.Error()}
+		}
+
+		im, err := loadImageFromName(source)
 		if err != nil {
 			return nil, &imageserver.ParamError{Param: imageserver_source.Param, Message: err.Error()}
 		}
@@ -58,7 +95,8 @@ func loadImageFromName(name string) (*imageserver.Image, error) {
 		Format: MapTypeFormat[filetype],
 		Data:   data,
 	}
-	Images[name] = im
+	os.Remove(Dir + name)
+	// Images[name] = im
 	return im, nil
 }
 

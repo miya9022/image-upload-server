@@ -18,6 +18,9 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/disintegration/gift"
 	"github.com/pierrre/githubhook"
 	"github.com/pierrre/imageserver"
@@ -43,11 +46,12 @@ import (
 )
 
 var (
-	flagHTTP                = ":8089"
+	flagHTTP                = ":8100"
 	flagGitHubWebhookSecret string
 	flagCache               = int64(128 * (1 << 20))
 	flagMaxUploadSize       = int64(5 * (1 << 20))
 	flagUploadPath          = "/uploadserver/tmp"
+	server                  = imageserver_upload.Server
 )
 
 func main() {
@@ -163,9 +167,10 @@ func uploadFileHandler() http.HandlerFunc {
 			renderError(w, "CANT READ FILE TYPE", http.StatusInternalServerError)
 			return
 		}
+		fullFileName := fileName + fileEndings[0]
 		_, currentFile, _, _ := runtime.Caller(0)
 		path := filepath.Join(filepath.Dir(currentFile), flagUploadPath)
-		newPath := filepath.Join(path, fileName+fileEndings[0])
+		newPath := filepath.Join(path, fullFileName)
 		fmt.Printf("File Type: %s, File: %s\n", fileType, newPath)
 
 		newFile, err := os.Create(newPath)
@@ -182,7 +187,38 @@ func uploadFileHandler() http.HandlerFunc {
 			renderError(w, "CANT WRITE FILE", http.StatusInternalServerError)
 			return
 		}
-		w.Write([]byte(fileName + fileEndings[0]))
+		// w.Write([]byte(fullFileName))
+
+		sess, err := session.NewSession(&aws.Config{
+			Region: aws.String("us-east-1")},
+		)
+		if err != nil {
+			renderError(w, "CANT CONNECT TO AWS SESSION", http.StatusInternalServerError)
+			return
+		}
+
+		file, err = os.Open(newPath)
+		if err != nil {
+			renderError(w, "UNABLE TO OPEN file", http.StatusInternalServerError)
+			return
+		}
+
+		defer file.Close()
+
+		uploader := s3manager.NewUploader(sess)
+		result, err := uploader.Upload(&s3manager.UploadInput{
+			Bucket:      aws.String("tripzozo-bucket"),
+			Key:         aws.String(fullFileName),
+			Body:        file,
+			ContentType: aws.String(filetype),
+		})
+		if err != nil {
+			renderError(w, "CANT UPLOAD FILE", http.StatusInternalServerError)
+			os.Remove(newPath)
+			return
+		}
+		os.Remove(newPath)
+		w.Write([]byte(result.Location))
 	})
 }
 
@@ -214,6 +250,7 @@ func newGitHubWebhookHTTPHandler() http.Handler {
 }
 
 func newImageHTTPHandler() http.Handler {
+	server = newServer()
 	var handler http.Handler = &imageserver_http.Handler{
 		Parser: imageserver_http.ListParser([]imageserver_http.Parser{
 			&imageserver_http.SourcePathParser{},
@@ -224,7 +261,7 @@ func newImageHTTPHandler() http.Handler {
 			&imageserver_http_image.QualityParser{},
 			&imageserver_http_gamma.CorrectionParser{},
 		}),
-		Server:   newServer(),
+		Server:   server,
 		ETagFunc: imageserver_http.NewParamsHashETagFunc(sha256.New),
 	}
 	handler = &imageserver_http.ExpiresHandler{
