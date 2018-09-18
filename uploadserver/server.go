@@ -49,7 +49,7 @@ var (
 			return nil, err
 		}
 
-		defer file.Close()
+		// defer file.Close()
 
 		s3dl := s3manager.NewDownloader(sess)
 		_, err = s3dl.Download(file, &s3.GetObjectInput{
