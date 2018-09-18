@@ -43,7 +43,7 @@ var (
 			return nil, err
 		}
 
-		file, err := os.Create(Dir + source)
+		file, err := os.OpenFile(Dir+source, os.O_RDONLY|os.O_CREATE, 0666)
 		if err != nil {
 			fmt.Println("Unable to open file ", err)
 			return nil, err
