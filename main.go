@@ -218,7 +218,7 @@ func uploadFileHandler() http.HandlerFunc {
 			return
 		}
 		os.Remove(newPath)
-		w.Write([]byte(result.Location))
+		w.Write([]byte(fileName + "-" + result.Location))
 	})
 }
 
