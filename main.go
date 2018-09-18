@@ -199,7 +199,7 @@ func uploadFileHandler() http.HandlerFunc {
 
 		file, err = os.Open(newPath)
 		if err != nil {
-			renderError(w, "UNABLE TO OPEN file", http.StatusInternalServerError)
+			renderError(w, "UNABLE TO OPEN FILE", http.StatusInternalServerError)
 			return
 		}
 
