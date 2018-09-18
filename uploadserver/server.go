@@ -95,7 +95,7 @@ func loadImageFromName(name string) (*imageserver.Image, error) {
 		Format: MapTypeFormat[filetype],
 		Data:   data,
 	}
-	os.Remove(Dir + name)
+	os.Remove(Dir + "/" + name)
 	// Images[name] = im
 	return im, nil
 }
