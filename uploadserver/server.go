@@ -112,7 +112,7 @@ func initMapTypeFormat() map[string]string {
 func initDir() string {
 	_, currentFile, _, _ := runtime.Caller(0)
 	path := filepath.Join(filepath.Dir(currentFile), "/tmp")
-	fmt.Printf(path)
+	fmt.Println(path)
 	return path
 }
 

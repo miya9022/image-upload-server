@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"image"
+	"image/draw"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
@@ -114,6 +115,7 @@ func uploadFileHandler() http.HandlerFunc {
 		}
 
 		filetype := http.DetectContentType(fileBytes)
+		fmt.Println(filetype)
 		if filetype != "image/jpeg" && filetype != "image/jpg" &&
 			filetype != "image/gif" && filetype != "image/png" {
 			renderError(w, "INVALID FILE TYPE", http.StatusBadRequest)
@@ -129,37 +131,20 @@ func uploadFileHandler() http.HandlerFunc {
 			imgSrc, _ = jpeg.Decode(bytes.NewReader(fileBytes))
 		}
 
-		g := gift.New(
-			gift.Resize(0, 800, gift.LanczosResampling),
-			gift.UnsharpMask(1, 1, 0),
-		)
-		newImage := image.NewRGBA(g.Bounds(imgSrc.Bounds()))
-		g.DrawAt(newImage, imgSrc, newImage.Bounds().Min, gift.OverOperator)
-
-		// img := image.NewGray(image.Rect(0, 0, 100, 100))
-		// img.Pix = fileBytes
-
-		// img := &image.Gray{Pix: fileBytes, Stride: 0, Rect: image.Rect(0, 0, 0, 0)}
-
-		// img := image.NewGray(image.Rect(0, 0, 100, 100))
-		// copy(img.Pix, fileBytes)
-		// img, _, _ := image.Decode(bytes.NewReader(fileBytes))
-		// img, _ := jpeg.Decode(bytes.NewReader(fileBytes))
-
-		// g := gift.New(
-		// 	gift.Resize(0, 0, gift.LanczosResampling),
-		// 	gift.UnsharpMask(1, 1, 0),
-		// )
-		// dst := image.NewRGBA(img.Bounds())
-		// g.DrawAt(dst, img, dst.Bounds().Min, gift.CopyOperator)
-
-		// buf := new(bytes.Buffer)
-		// err1 := jpeg.Encode(buf, dst, nil)
-		// if err1 != nil {
-		// 	renderError(w, "CANT CONVERT IMAGE", http.StatusInternalServerError)
-		// 	return
-		// }
-		// newFileBytes := buf.Bytes()
+		s := fmt.Sprintf("file size: %d", len(fileBytes))
+		fmt.Println(s)
+		var newImage draw.Image
+		if len(fileBytes) > 20000 {
+			g := gift.New(
+				gift.Resize(0, 800, gift.LanczosResampling),
+				gift.UnsharpMask(1, 1, 0),
+			)
+			newImage = image.NewRGBA(g.Bounds(imgSrc.Bounds()))
+			g.DrawAt(newImage, imgSrc, newImage.Bounds().Min, gift.OverOperator)
+		} else {
+			newImage = image.NewRGBA(imgSrc.Bounds())
+			gift.New().Draw(newImage, imgSrc)
+		}
 
 		fileName := randToken(12)
 		fileEndings, err := mime.ExtensionsByType(filetype)
@@ -181,13 +166,20 @@ func uploadFileHandler() http.HandlerFunc {
 
 		defer newFile.Close()
 
-		var opt jpeg.Options
-		opt.Quality = 80
-		if err := jpeg.Encode(newFile, newImage, &opt); err != nil {
+		if filetype == "image/png" {
+			err = png.Encode(newFile, newImage)
+		} else if filetype == "image/gif" {
+			var opt gif.Options
+			err = gif.Encode(newFile, newImage, &opt)
+		} else {
+			var opt jpeg.Options
+			opt.Quality = 80
+			err = jpeg.Encode(newFile, newImage, &opt)
+		}
+		if err != nil {
 			renderError(w, "CANT WRITE FILE", http.StatusInternalServerError)
 			return
 		}
-		// w.Write([]byte(fullFileName))
 
 		sess, err := session.NewSession(&aws.Config{
 			Region: aws.String("us-east-1")},
