@@ -206,7 +206,7 @@ func uploadFileHandler() http.HandlerFunc {
 		defer file.Close()
 
 		uploader := s3manager.NewUploader(sess)
-		result, err := uploader.Upload(&s3manager.UploadInput{
+		_, err = uploader.Upload(&s3manager.UploadInput{
 			Bucket:      aws.String("tripzozo-bucket"),
 			Key:         aws.String(fullFileName),
 			Body:        file,
@@ -218,7 +218,7 @@ func uploadFileHandler() http.HandlerFunc {
 			return
 		}
 		os.Remove(newPath)
-		w.Write([]byte(fileName + "-" + result.Location))
+		w.Write([]byte(fullFileName))
 	})
 }
 
