@@ -17,7 +17,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go/service/s3"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -41,6 +44,7 @@ import (
 	_ "github.com/pierrre/imageserver/image/jpeg"
 	_ "github.com/pierrre/imageserver/image/png"
 	_ "github.com/pierrre/imageserver/image/tiff"
+
 	// imageserver_testdata "github.com/pierrre/imageserver/testdata"
 	imageserver_http_cors "github.com/miya9022/image-upload-server/http"
 	imageserver_upload "github.com/miya9022/image-upload-server/uploadserver"
@@ -81,6 +85,7 @@ func newHTTPHandler() http.Handler {
 	mux.Handle("/", http.StripPrefix("/", newImageHTTPHandler()))
 	mux.Handle("/favicon.ico", http.NotFoundHandler())
 	mux.HandleFunc("/upload", uploadFileHandler())
+	mux.HandleFunc("/delete/", deleteFileHandler())
 	if h := newGitHubWebhookHTTPHandler(); h != nil {
 		mux.Handle("/github_webhook", h)
 	}
@@ -211,6 +216,47 @@ func uploadFileHandler() http.HandlerFunc {
 		}
 		os.Remove(newPath)
 		w.Write([]byte(fullFileName))
+	})
+}
+
+func deleteFileHandler() http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" {
+			renderError(w, "INVALID REQUEST", http.StatusMethodNotAllowed)
+			return
+		}
+
+		bucket := "tripzozo-bucket"
+		objectid := strings.TrimPrefix(r.URL.Path, "/delete/")
+		if objectid == "" {
+			renderError(w, "Object Id must not null", http.StatusBadRequest)
+			return
+		}
+
+		sess, err := session.NewSession(&aws.Config{
+			Region: aws.String("us-east-1")},
+		)
+		if err != nil {
+			renderError(w, "CANT CONNECT TO AWS SESSION", http.StatusInternalServerError)
+			return
+		}
+
+		svc := s3.New(sess)
+		_, err = svc.DeleteObject(&s3.DeleteObjectInput{Bucket: aws.String(bucket), Key: aws.String(objectid)})
+		if err != nil {
+			renderError(w, "Unable to delete object "+objectid+" from bucket "+bucket, http.StatusInternalServerError)
+			return
+		}
+
+		err = svc.WaitUntilObjectNotExists(&s3.HeadObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(objectid),
+		})
+		if err != nil {
+			renderError(w, "Some errors occurr", http.StatusInternalServerError)
+			return
+		}
+		w.Write([]byte(objectid))
 	})
 }
 
