@@ -7,12 +7,10 @@ import (
 	"flag"
 	"fmt"
 	"image"
-	"image/draw"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"io/ioutil"
-	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/disintegration/gift"
+	"github.com/disintegration/imaging"
 	"github.com/pierrre/githubhook"
 	"github.com/pierrre/imageserver"
 	imageserver_cache "github.com/pierrre/imageserver/cache"
@@ -138,26 +137,15 @@ func uploadFileHandler() http.HandlerFunc {
 
 		s := fmt.Sprintf("file size: %d", len(fileBytes))
 		fmt.Println(s)
-		var newImage draw.Image
-		if len(fileBytes) > 20000 {
-			g := gift.New(
-				gift.Resize(0, 800, gift.LanczosResampling),
-				gift.UnsharpMask(1, 1, 0),
-			)
-			newImage = image.NewRGBA(g.Bounds(imgSrc.Bounds()))
-			g.DrawAt(newImage, imgSrc, newImage.Bounds().Min, gift.OverOperator)
-		} else {
-			newImage = image.NewRGBA(imgSrc.Bounds())
-			gift.New().Draw(newImage, imgSrc)
-		}
+		var newImage = imaging.Resize(imgSrc, 0, 800, imaging.MitchellNetravali)
 
 		fileName := randToken(12)
-		fileEndings, err := mime.ExtensionsByType(filetype)
+		// fileEndings, err := mime.ExtensionsByType(filetype)
 		if err != nil {
 			renderError(w, "CANT READ FILE TYPE", http.StatusInternalServerError)
 			return
 		}
-		fullFileName := fileName + fileEndings[0]
+		fullFileName := fileName + ".jpg"
 		_, currentFile, _, _ := runtime.Caller(0)
 		path := filepath.Join(filepath.Dir(currentFile), flagUploadPath)
 		newPath := filepath.Join(path, fullFileName)
@@ -170,17 +158,8 @@ func uploadFileHandler() http.HandlerFunc {
 		}
 
 		defer newFile.Close()
+		err = imaging.Encode(newFile, newImage, imaging.JPEG, imaging.JPEGQuality(80))
 
-		if filetype == "image/png" {
-			err = png.Encode(newFile, newImage)
-		} else if filetype == "image/gif" {
-			var opt gif.Options
-			err = gif.Encode(newFile, newImage, &opt)
-		} else {
-			var opt jpeg.Options
-			opt.Quality = 80
-			err = jpeg.Encode(newFile, newImage, &opt)
-		}
 		if err != nil {
 			renderError(w, "CANT WRITE FILE", http.StatusInternalServerError)
 			return
