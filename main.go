@@ -18,10 +18,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/service/s3"
+	webp "github.com/chai2010/webp"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/disintegration/gift"
 	"github.com/disintegration/imaging"
@@ -53,7 +54,7 @@ var (
 	flagHTTP                = ":8100"
 	flagGitHubWebhookSecret string
 	flagCache               = int64(128 * (1 << 20))
-	flagMaxUploadSize       = int64(5 * (1 << 20))
+	flagMaxUploadSize       = int64(6 * (1 << 25))
 	flagUploadPath          = "/uploadserver/tmp"
 	server                  = imageserver_upload.Server
 )
@@ -121,7 +122,8 @@ func uploadFileHandler() http.HandlerFunc {
 		filetype := http.DetectContentType(fileBytes)
 		fmt.Println(filetype)
 		if filetype != "image/jpeg" && filetype != "image/jpg" &&
-			filetype != "image/gif" && filetype != "image/png" {
+			filetype != "image/gif" && filetype != "image/png" &&
+			filetype != "image/webp" {
 			renderError(w, "INVALID FILE TYPE", http.StatusBadRequest)
 			return
 		}
@@ -131,6 +133,8 @@ func uploadFileHandler() http.HandlerFunc {
 			imgSrc, _ = png.Decode(bytes.NewReader(fileBytes))
 		} else if filetype == "image/gif" {
 			imgSrc, _ = gif.Decode(bytes.NewReader(fileBytes))
+		} else if filetype == "image/webp" {
+			imgSrc, _ = webp.Decode(bytes.NewReader(fileBytes))
 		} else {
 			imgSrc, _ = jpeg.Decode(bytes.NewReader(fileBytes))
 		}
@@ -166,8 +170,8 @@ func uploadFileHandler() http.HandlerFunc {
 		}
 
 		sess, err := session.NewSession(&aws.Config{
-			Region: aws.String("us-east-1")},
-		)
+			Region: aws.String("us-east-1"),
+		})
 		if err != nil {
 			renderError(w, "CANT CONNECT TO AWS SESSION", http.StatusInternalServerError)
 			return
